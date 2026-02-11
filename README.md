@@ -1,5 +1,5 @@
 # SolarForecast
-Domoticz plugin to fetch [Solar Forecast](https://forecast.solar/) data<br><br>
+Domoticz plugin to fetch [NED solar forecast](https://ned.nl/nl/zonne-energievoorspeller) data (Dutch website)<br><br>
 
 Preliminary version, breaking changes to be expected!<br>
 reads forecasted solar power prediction for a given solar panel installation<br><br>
@@ -20,12 +20,12 @@ sudo apt-get install python3-requests
 1. Clone repository into your domoticz plugins folder
 ```
 cd domoticz/plugins
-git clone https://github.com/JanJaapKo/SolarForecast
+git clone https://github.com/JanJaapKo/NEDsolarForecast
 ```
 to update:
 ```
 cd domoticz/plugins/SolarForecast
-git pull https://github.com/JanJaapKo/SolarForecast
+git pull https://github.com/JanJaapKo/NEDsolarForecast
 ```
 2. Restart domoticz
 3. Go to step configuration
@@ -37,3 +37,4 @@ Fill in the following parameters (mandatory unless marked optional):
 - Panels azimuth in degrees: Angle of the solar panels to earth compass: -180 … 180 (-180 = north, -90 = east, 0 = south, 90 = west, 180 = north)
 - Panels peak power in kiloWatt: the peak power of the installation
 - Optional: enter your API key to allow more frequent and more detailed forecasts
+
