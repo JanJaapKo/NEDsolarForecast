@@ -3,7 +3,7 @@
 # Author: Jan-Jaap Kostelijk
 #
 """
-<plugin key="SolarForecast" name="Solar Forecast" author="Jan-Jaap Kostelijk" version="0.1.3" externallink="https://github.com/JanJaapKo/SolarForecast">
+<plugin key="NEDsolarForecast" name="NED solar forecast" author="Jan-Jaap Kostelijk" version="0.0.3" externallink="https://github.com/JanJaapKo/NEDsolarForecast">
     <description>
         Solar power forecast plugin<br/><br/>
         Fetches solar power forecast from the site solar.forecast<br/><br/><br/>
