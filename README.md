@@ -1,9 +1,8 @@
 # SolarForecast
-Domoticz plugin to fetch [NED solar forecast](https://ned.nl/nl/zonne-energievoorspeller) data (Dutch website)<br><br>
+Domoticz plugin to fetch solar power forecast data from the [Nationaal Energie Dashboard (NED)](https://ned.nl/nl/zonne-energievoorspeller) API<br><br>
 
-Preliminary version, breaking changes to be expected!<br>
-reads forecasted solar power prediction for a given solar panel installation<br><br>
-Remark: if you have sets of panels in (very) different orientations, make a Hardware entry for each and make a Domoticz script to add them together<br>
+Fetches hourly solar power forecasts for Dutch provinces from the official NED API<br><br>
+Remark: The forecast data is regional/provincial aggregate data, not specific to individual installations<br>
 
 ## Prerequisites
 
@@ -35,9 +34,10 @@ git pull https://github.com/JanJaapKo/NEDsolarForecast
 Fill in the following parameters (mandatory unless marked optional):
 - Panels declination in degrees: how 'steep' the panels are mounted on the roof:  0 (horizontal) … 90 (vertical)
 - Panels azimuth in degrees: Angle of the solar panels to earth compass: -180 … 180 (-180 = north, -90 = east, 0 = south, 90 = west, 180 = north)
-- Panels peak power in kiloWatt: the peak power of the installation
-- Location: Select your location in the Netherlands for accurate forecasting:
-  - Nederland (uses your Domoticz location setting)
+- Panels peak power in kiloWatt: the peak power of the installation (for reference only; data comes from NED API)
+- API key (mandatory): Your personal NED API key - obtain from https://ned.nl/user by creating an account
+- Location: Select your location in the Netherlands for forecast data:
+  - Nederland (national forecast)
   - Groningen
   - Friesland
   - Drenthe
@@ -50,6 +50,5 @@ Fill in the following parameters (mandatory unless marked optional):
   - Zeeland
   - Noord-Brabant
   - Limburg
-- Optional: enter your API key to allow more frequent and more detailed forecasts
 - Debug: Set debug logging level (Verbose/Debug/Normal)
 

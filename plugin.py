@@ -18,8 +18,8 @@
 		<param field="Mode3" label="Panels peak power" width="30px" required="true" default="4.8">
             <description>Installed power of the modules in kilo Watt [kW]</description>
         </param>
-		<param field="Mode5" label="API key" width="200px" required="false">
-            <description>Optional: provide your personal API key</description>
+		<param field="Mode5" label="API key" width="200px" required="true">
+            <description>Your personal NED API key - obtain from https://ned.nl/user</description>
         </param>
 		<param field="Mode4" label="Debug" width="75px">
             <options>
@@ -61,29 +61,32 @@ except ImportError:
 import json
 import time
 import requests
+import math
 from datetime import datetime, timedelta, date
 
 class SolarForecastPlug:
     #define class variables
-    location = dict()
+    location_code = '0'
     doneForToday = False
     debug = False
+    APIkey = ""
+    last_api_call = None
     
-    # Location coordinates for Netherlands provinces
+    # Location names for Netherlands provinces
     locations = {
-        '0': {'name': 'Nederland', 'lat': None, 'lon': None},  # Uses Settings["Location"]
-        '1': {'name': 'Groningen', 'lat': '53.2', 'lon': '6.6'},
-        '2': {'name': 'Friesland', 'lat': '53.0', 'lon': '5.8'},
-        '3': {'name': 'Drenthe', 'lat': '53.0', 'lon': '6.6'},
-        '4': {'name': 'Overijssel', 'lat': '52.5', 'lon': '6.8'},
-        '5': {'name': 'Flevoland', 'lat': '52.6', 'lon': '5.3'},
-        '6': {'name': 'Gelderland', 'lat': '52.0', 'lon': '6.0'},
-        '7': {'name': 'Utrecht', 'lat': '52.1', 'lon': '5.2'},
-        '8': {'name': 'Noord-Holland', 'lat': '52.5', 'lon': '5.1'},
-        '9': {'name': 'Zuid-Holland', 'lat': '51.9', 'lon': '4.5'},
-        '10': {'name': 'Zeeland', 'lat': '51.4', 'lon': '3.9'},
-        '11': {'name': 'Noord-Brabant', 'lat': '51.5', 'lon': '5.0'},
-        '12': {'name': 'Limburg', 'lat': '51.2', 'lon': '5.7'}
+        '0': {'name': 'Nederland', 'latitude': 52.13, 'longitude': 5.29},
+        '1': {'name': 'Groningen', 'latitude': 53.22, 'longitude': 6.57},
+        '2': {'name': 'Friesland', 'latitude': 53.14, 'longitude': 5.79},
+        '3': {'name': 'Drenthe', 'latitude': 52.96, 'longitude': 6.39},
+        '4': {'name': 'Overijssel', 'latitude': 52.50, 'longitude': 6.27},
+        '5': {'name': 'Flevoland', 'latitude': 52.67, 'longitude': 5.52},
+        '6': {'name': 'Gelderland', 'latitude': 52.04, 'longitude': 5.87},
+        '7': {'name': 'Utrecht', 'latitude': 52.09, 'longitude': 5.12},
+        '8': {'name': 'Noord-Holland', 'latitude': 52.50, 'longitude': 4.79},
+        '9': {'name': 'Zuid-Holland', 'latitude': 51.97, 'longitude': 4.48},
+        '10': {'name': 'Zeeland', 'latitude': 51.50, 'longitude': 3.60},
+        '11': {'name': 'Noord-Brabant', 'latitude': 51.50, 'longitude': 5.04},
+        '12': {'name': 'Limburg', 'latitude': 50.87, 'longitude': 5.71}
     }
 
     def __init__(self):
@@ -100,22 +103,14 @@ class SolarForecastPlug:
             DumpConfigToLog()
 
         #read out parameters
-        location_code = Parameters['Mode6']
-        if location_code == '0':
-            # Use Domoticz location setting
-            self.location["latitude"], self.location["longitude"] = Settings["Location"].split(";")
-        else:
-            # Use predefined province location
-            self.location["latitude"] = self.locations[location_code]['lat']
-            self.location["longitude"] = self.locations[location_code]['lon']
-        Domoticz.Debug(f"Using location: {self.locations[location_code]['name']}")
-        Domoticz.Debug("self.location.latitude, self.location.longitude = " + str(self.location["latitude"]) +" "+ str(self.location["longitude"]))
+        self.location_code = Parameters['Mode6']
+        Domoticz.Debug(f"Using location: {self.locations[self.location_code]['name']} (code: {self.location_code})")
         self.dec = int(Parameters['Mode1'])
         self.az = int(Parameters['Mode2'])
         self.kwp = float(Parameters['Mode3'])
-        self.APIkey = ""
-        if len(Parameters['Mode5']) > 0:
-            self.APIkey = Parameters['Mode5'] + '/'
+        self.APIkey = Parameters['Mode5']
+        if len(self.APIkey) == 0:
+            Domoticz.Error("API key is required to use the NED API")
 
         self.deviceId = "SolarForecast"
         self.deviceId = Parameters['Name']
@@ -125,10 +120,8 @@ class SolarForecastPlug:
             #Options={"AddDBLogEntry" : "true"}
             #Domoticz.Unit(Name=self.deviceId + ' - 24h forecast', Unit=1, Type=243, Subtype=33, Switchtype=4,  Used=1, Options=Options, DeviceID=self.deviceId).Create()
             Domoticz.Unit(Name=self.deviceId + ' - 24h forecast', Unit=1, Type=243, Subtype=33, Switchtype=4,  Used=1, DeviceID=self.deviceId).Create()
-        # if self.deviceId not in Devices or (2 not in Devices[self.deviceId].Units):
-            # Domoticz.Unit(Name=self.deviceId + ' - next hour', Unit=2, Type=243, Subtype=31, Options={'Custom': '1;Wh'},  Used=1, DeviceID=self.deviceId).Create()
             
-        data = self.getData(self.location["latitude"], self.location["longitude"], self.dec, self.az, self.kwp)
+        data = self.getData(self.location_code)
         if data:
             self.updateDevices(data)
         self.doneForToday = False
@@ -142,60 +135,212 @@ class SolarForecastPlug:
     def onHeartbeat(self):
         #Domoticz.Debug("onHeartbeat called")
         current_hour = datetime.now().hour
-        # Only poll API at 22:00 and 23:00 daily
-        if (current_hour == 22 or current_hour == 23) or self.debug:
-            if not self.doneForToday or self.debug:
-                data = self.getData(self.location["latitude"], self.location["longitude"], self.dec, self.az, self.kwp)
-                # only update once per day during these hours
-                Domoticz.Debug("time to update devices!!!!")
-                self.queryFromTo(self.deviceId, 1)
-                if data:
-                    self.updateDevices(data)
-                    self.doneForToday = True
-        else:
-            # Reset the flag when we're outside the polling hours
-            if current_hour == 21:
-                self.doneForToday = False
+        current_time = datetime.now()
+        should_poll = False
+        
+        # Check if we should poll the API
+        if (current_hour == 22 or current_hour == 23):
+            # Normal polling hours: once per day
+            if not self.doneForToday:
+                should_poll = True
+                self.doneForToday = True
+        elif self.debug:
+            # Debug mode: maximum once per minute
+            if self.last_api_call is None or (current_time - self.last_api_call).total_seconds() >= 60:
+                should_poll = True
+                self.last_api_call = current_time
+        
+        # Reset the flag when we're outside the polling hours
+        if current_hour == 21:
+            self.doneForToday = False
+        
+        # Execute the poll if conditions are met
+        if should_poll:
+            data = self.getData(self.location_code)
+            Domoticz.Debug("time to update devices!!!!")
+            self.queryFromTo(self.deviceId, 1)
+            if data:
+                self.updateDevices(data)
 
-    def getData(self, lat, lon, dec, az, kwp):
-        baseUrl = "https://api.forecast.solar/" + self.APIkey + "estimate"
-        response = requests.get(baseUrl +f"/{lat}/{lon}/{dec}/{az}/{kwp}")
-        if len(response.json())>0:
-            Domoticz.Debug("full url: "+str(response.url)+"; data message: "+str(response.json()["message"]["type"]) + " "+str(response.json()["message"]["text"]))
-            # Domoticz.Debug("response headers: "+str(response.headers)+"; ")
-        else:
-            Domoticz.Error("empty reply from API")
+    def getData(self, location_code):
+        """Fetch solar forecast data from NED API"""
+        baseUrl = "https://api.ned.nl/v1/utilizations"
+        
+        headers = {
+            'X-AUTH-TOKEN': self.APIkey,
+            'accept': 'application/json'
+        }
+        
+        # Calculate date range: today and tomorrow
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        day_after = tomorrow + timedelta(days=1)
+        
+        params = {
+            'point': location_code,
+            'type': 2,  # Solar
+            'granularity': 5,  # Hour granularity
+            'granularitytimezone': 1,  # CET (Central European Time)
+            'classification': 1,  # Forecast
+            'activity': 1,  # Providing (production)
+            'validfrom[after]': str(today),
+            'validfrom[strictly_before]': str(day_after)
+        }
+        
+        try:
+            response = requests.get(baseUrl, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            Domoticz.Debug(f"API call successful. URL: {response.url}")
+            return data
+        except requests.exceptions.RequestException as e:
+            Domoticz.Error(f"Error calling NED API: {str(e)}")
             return False
-        # Domoticz.Debug(json.dumps(response.json(),indent=4)) #only for manual testing
-        return response.json()
 
-    def updateDevices(self, json):
-        message_type = json["message"]["type"]
-        message_text = json["message"]["text"]
-        if json["message"]["type"] != "success":
-            #the response is not successful
-            Domoticz.Error("Error requesting data: " + f"{message_type} : {message_text}")
-        else:
-            Domoticz.Debug("successful data received")
-            for dtline in json["result"]["watt_hours_period"]:
-                #only update for tomorrow
-                #Domoticz.Debug("dtline = "+dtline)
-                dateline = datetime.fromisoformat(dtline)
-                if dateline.date() > date.today():
-                    sValue = str(json["result"]["watts"][dtline])+";"+str(json["result"]["watt_hours_period"][dtline])+";"+str(dtline)
-                    #sValue = "-1;"+str(json["result"]["watt_hours_period"][dtline])+";"+str(dtline)
-                    #Domoticz.Debug("sValue = "+str(sValue))
+    def calculate_solar_correction(self, hour, capacity, location_code):
+        """
+        Calculate solar position correction based on panel orientation and sun position.
+        Converts API capacity to actual expected energy based on solar geometry.
+        """
+        try:
+            # Get location coordinates
+            location = self.locations[location_code]
+            latitude = location['latitude']
+            longitude = location['longitude']
+            
+            # Solar position calculations
+            current_date = datetime.now()
+            day_of_year = current_date.timetuple().tm_yday
+            
+            # Calculate solar declination (angle of sun relative to equator)
+            angular_speed = 360 / 365.25
+            declination_rad = math.asin(0.3978 * math.sin(math.radians(angular_speed * 
+                            (day_of_year - (81 - 2 * math.sin(math.radians(angular_speed * (day_of_year - 2))))))))
+            declination = math.degrees(declination_rad)
+            
+            # Convert parameters to radians
+            lat_rad = math.radians(latitude)
+            lon_rad = math.radians(longitude)
+            decl_rad = math.radians(declination)
+            
+            # Time calculations
+            solar_hour = hour + (4 * longitude / 60)
+            hourly_angle = 15 * (12 - solar_hour)
+            hourly_angle_rad = math.radians(hourly_angle)
+            
+            # Calculate sun altitude and azimuth
+            sin_altitude = (math.sin(lat_rad) * math.sin(decl_rad) + 
+                           math.cos(lat_rad) * math.cos(decl_rad) * math.cos(hourly_angle_rad))
+            sin_altitude = max(-1, min(1, sin_altitude))  # Clamp to valid range
+            sun_altitude = math.degrees(math.asin(sin_altitude))
+            
+            # Sun azimuth calculation
+            cos_azimuth = ((math.sin(decl_rad) - math.sin(lat_rad) * math.sin(math.radians(sun_altitude))) / 
+                          (math.cos(lat_rad) * math.cos(math.radians(sun_altitude))))
+            cos_azimuth = max(-1, min(1, cos_azimuth))  # Clamp to valid range
+            sun_azimuth = math.degrees(math.acos(cos_azimuth))
+            
+            # Determine azimuth sign
+            sin_azimuth = (math.cos(decl_rad) * math.sin(hourly_angle_rad)) / math.cos(math.radians(sun_altitude))
+            if sin_azimuth < 0:
+                sun_azimuth = 360 - sun_azimuth
+            
+            # Calculate directional correction factors
+            correction = 0.0
+            
+            if capacity > 0 and sun_altitude > -2:
+                # Azimuth difference between sun and panel
+                az_diff = sun_azimuth - self.az
+                if az_diff > 180:
+                    az_diff = az_diff - 360
+                elif az_diff < -180:
+                    az_diff = az_diff + 360
+                
+                # Direct radiation factor based on azimuth
+                if az_diff >= -55:
+                    direct_factor = 1.0
+                elif az_diff >= -100:
+                    direct_factor = max(0.15, (az_diff + 100) / 45)
+                else:
+                    direct_factor = 0.1
+                
+                # Altitude factor (accounts for low sun angles)
+                if sun_altitude <= -2:
+                    alt_factor = 0
+                elif sun_altitude < 5:
+                    alt_factor = 0.15 + 0.85 * (sun_altitude + 2) / 7
+                else:
+                    alt_factor = 1.0
+                
+                direct_factor = direct_factor * alt_factor
+                diffuse_factor = 0.18 * alt_factor
+                correction = min(1.0, direct_factor + diffuse_factor)
+            
+            # Calculate final energy in kWh
+            kwh = self.kwp * (capacity / 100.0) * correction
+            
+            Domoticz.Debug(f"Hour {hour}: capacity={capacity:.2f}%, sunAz={sun_azimuth:.1f}°, sunAlt={sun_altitude:.1f}°, correction={correction:.3f}, kWh={kwh:.3f}")
+            
+            return kwh
+            
+        except Exception as e:
+            Domoticz.Error(f"Error calculating solar correction: {str(e)}")
+            return 0.0
+
+    def updateDevices(self, data):
+        """Update devices with solar forecast data from NED API"""
+        try:
+            Domoticz.Debug(f"Processing {len(data)} data points from NED API")
+            
+            # Track daily and hourly totals
+            daily_totals = {}
+            
+            if not isinstance(data, list):
+                Domoticz.Error("Unexpected data format from NED API")
+                return
+            
+            # Process each utilization record
+            for utilization in data:
+                try:
+                    validfrom = utilization.get('validfrom', '')
+                    capacity = utilization.get('capacity', 0)  # in percentage (0-100)
+                    
+                    if not validfrom:
+                        continue
+                    
+                    dateline = datetime.fromisoformat(validfrom)
+                    hour = dateline.hour
+                    
+                    # Apply solar position correction
+                    corrected_kwh = self.calculate_solar_correction(hour, capacity, self.location_code)
+                    
+                    # Calculate watts for display
+                    watts = int(corrected_kwh * 1000)  # Convert kWh to W
+                    
+                    # Build sValue: watts;wh;timestamp
+                    sValue = f"{watts};{corrected_kwh:.3f};{validfrom}"
+                    
+                    Domoticz.Debug(f"Updating device with: capacity={capacity}%, corrected_kwh={corrected_kwh:.3f}kWh, time={validfrom}")
                     self.UpdateDevice(self.deviceId, 1, 0, sValue)
-            for dtline in json["result"]["watt_hours_day"]:
-                dateline = datetime.fromisoformat(dtline)
-                if dateline.date() > date.today():
-                    sValue = "-1;"+str(json["result"]["watt_hours_day"][dtline])+";"+str(dtline)
-                    Domoticz.Debug("sValue = "+str(sValue))
-                    self.UpdateDevice(self.deviceId, 1, 0, sValue)
+                    
+                    # Track daily total
+                    day_key = dateline.date()
+                    if day_key not in daily_totals:
+                        daily_totals[day_key] = 0
+                    daily_totals[day_key] += corrected_kwh
+                    
+                except (KeyError, ValueError, TypeError) as e:
+                    Domoticz.Debug(f"Error processing utilization record: {str(e)}")
+                    continue
+            
+            Domoticz.Debug("successful data received and processed")
+            
+        except Exception as e:
+            Domoticz.Error(f"Error updating devices: {str(e)}")
         
     def queryFromTo(self, Device, Unit):
-        # see for which dataes a device holds data
-        Domoticz.Debug("the IDX shoud be "+ str(Devices[Device].Units[Unit].ID) + " for device " + str(Devices[Device].Units[Unit].Name))
+        # see for which dates a device holds data
+        Domoticz.Debug("the IDX should be "+ str(Devices[Device].Units[Unit].ID) + " for device " + str(Devices[Device].Units[Unit].Name))
 
     def UpdateDevice(self, Device, Unit, nValue, sValue, AlwaysUpdate=False, Name=""):
         # Make sure that the Domoticz device still exists (they can be deleted) before updating it
