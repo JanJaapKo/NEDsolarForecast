@@ -36,5 +36,20 @@ Fill in the following parameters (mandatory unless marked optional):
 - Panels declination in degrees: how 'steep' the panels are mounted on the roof:  0 (horizontal) … 90 (vertical)
 - Panels azimuth in degrees: Angle of the solar panels to earth compass: -180 … 180 (-180 = north, -90 = east, 0 = south, 90 = west, 180 = north)
 - Panels peak power in kiloWatt: the peak power of the installation
+- Location: Select your location in the Netherlands for accurate forecasting:
+  - Nederland (uses your Domoticz location setting)
+  - Groningen
+  - Friesland
+  - Drenthe
+  - Overijssel
+  - Flevoland
+  - Gelderland
+  - Utrecht
+  - Noord-Holland
+  - Zuid-Holland
+  - Zeeland
+  - Noord-Brabant
+  - Limburg
 - Optional: enter your API key to allow more frequent and more detailed forecasts
+- Debug: Set debug logging level (Verbose/Debug/Normal)
 

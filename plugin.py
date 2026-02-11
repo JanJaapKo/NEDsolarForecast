@@ -28,13 +28,22 @@
                 <option label="False" value="Normal"/>
             </options>
         </param>
-        <param field="Mode6" label="Refresh interval" width="75px">
-            <description>Please note that free option only supports 12 updates per hour (5minutes)</description>
+        <param field="Mode6" label="Location" width="100px">
+            <description>Select your location in the Netherlands</description>
             <options>
-                <option label="5m" value="30"/>
-                <option label="10m" value="60" default="true"/>
-                <option label="15m" value="90"/>
-                <option label="1hr" value="360"/>
+                <option label="Nederland" value="0" default="true"/>
+                <option label="Groningen" value="1"/>
+                <option label="Friesland" value="2"/>
+                <option label="Drenthe" value="3"/>
+                <option label="Overijssel" value="4"/>
+                <option label="Flevoland" value="5"/>
+                <option label="Gelderland" value="6"/>
+                <option label="Utrecht" value="7"/>
+                <option label="Noord-Holland" value="8"/>
+                <option label="Zuid-Holland" value="9"/>
+                <option label="Zeeland" value="10"/>
+                <option label="Noord-Brabant" value="11"/>
+                <option label="Limburg" value="12"/>
             </options>
         </param>
     </params>
@@ -56,10 +65,26 @@ from datetime import datetime, timedelta, date
 
 class SolarForecastPlug:
     #define class variables
-    runCounter = 0
     location = dict()
     doneForToday = False
     debug = False
+    
+    # Location coordinates for Netherlands provinces
+    locations = {
+        '0': {'name': 'Nederland', 'lat': None, 'lon': None},  # Uses Settings["Location"]
+        '1': {'name': 'Groningen', 'lat': '53.2', 'lon': '6.6'},
+        '2': {'name': 'Friesland', 'lat': '53.0', 'lon': '5.8'},
+        '3': {'name': 'Drenthe', 'lat': '53.0', 'lon': '6.6'},
+        '4': {'name': 'Overijssel', 'lat': '52.5', 'lon': '6.8'},
+        '5': {'name': 'Flevoland', 'lat': '52.6', 'lon': '5.3'},
+        '6': {'name': 'Gelderland', 'lat': '52.0', 'lon': '6.0'},
+        '7': {'name': 'Utrecht', 'lat': '52.1', 'lon': '5.2'},
+        '8': {'name': 'Noord-Holland', 'lat': '52.5', 'lon': '5.1'},
+        '9': {'name': 'Zuid-Holland', 'lat': '51.9', 'lon': '4.5'},
+        '10': {'name': 'Zeeland', 'lat': '51.4', 'lon': '3.9'},
+        '11': {'name': 'Noord-Brabant', 'lat': '51.5', 'lon': '5.0'},
+        '12': {'name': 'Limburg', 'lat': '51.2', 'lon': '5.7'}
+    }
 
     def __init__(self):
         pass
@@ -75,8 +100,15 @@ class SolarForecastPlug:
             DumpConfigToLog()
 
         #read out parameters
-        self.runCounter = int(Parameters['Mode6'])
-        self.location["latitude"], self.location["longitude"] = Settings["Location"].split(";")
+        location_code = Parameters['Mode6']
+        if location_code == '0':
+            # Use Domoticz location setting
+            self.location["latitude"], self.location["longitude"] = Settings["Location"].split(";")
+        else:
+            # Use predefined province location
+            self.location["latitude"] = self.locations[location_code]['lat']
+            self.location["longitude"] = self.locations[location_code]['lon']
+        Domoticz.Debug(f"Using location: {self.locations[location_code]['name']}")
         Domoticz.Debug("self.location.latitude, self.location.longitude = " + str(self.location["latitude"]) +" "+ str(self.location["longitude"]))
         self.dec = int(Parameters['Mode1'])
         self.az = int(Parameters['Mode2'])
@@ -109,19 +141,21 @@ class SolarForecastPlug:
 
     def onHeartbeat(self):
         #Domoticz.Debug("onHeartbeat called")
-        self.runCounter = self.runCounter - 1
-        if self.runCounter <= 0:
-            # Domoticz.Debug("Poll unit")
-            self.runCounter = int(Parameters['Mode6'])
-            #if (not self.doneForToday and datetime.now().hour >= 22) or self.debug:
-            if (datetime.now().hour >= 22) or self.debug:
+        current_hour = datetime.now().hour
+        # Only poll API at 22:00 and 23:00 daily
+        if (current_hour == 22 or current_hour == 23) or self.debug:
+            if not self.doneForToday or self.debug:
                 data = self.getData(self.location["latitude"], self.location["longitude"], self.dec, self.az, self.kwp)
-                # only update once per day after 22:00
+                # only update once per day during these hours
                 Domoticz.Debug("time to update devices!!!!")
                 self.queryFromTo(self.deviceId, 1)
                 if data:
                     self.updateDevices(data)
                     self.doneForToday = True
+        else:
+            # Reset the flag when we're outside the polling hours
+            if current_hour == 21:
+                self.doneForToday = False
 
     def getData(self, lat, lon, dec, az, kwp):
         baseUrl = "https://api.forecast.solar/" + self.APIkey + "estimate"
