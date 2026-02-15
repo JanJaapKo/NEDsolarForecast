@@ -3,7 +3,7 @@
 # Author: Jan-Jaap Kostelijk
 #
 """
-<plugin key="NEDsolarForecast" name="NED solar forecast" author="Jan-Jaap Kostelijk" version="0.0.3" externallink="https://github.com/JanJaapKo/NEDsolarForecast">
+<plugin key="NEDsolarForecast" name="NED solar forecast" author="Jan-Jaap Kostelijk" version="0.0.4" externallink="https://github.com/JanJaapKo/NEDsolarForecast">
     <description>
         Solar power forecast plugin<br/><br/>
         Fetches solar power forecast from the site solar.forecast<br/><br/><br/>
@@ -318,9 +318,11 @@ class SolarForecastPlug:
                     watts = int(corrected_kwh * 1000)  # Convert kWh to W
                     
                     # Build sValue: watts;wh;timestamp
-                    sValue = f"{watts};{corrected_kwh:.3f};{validfrom}"
+                    #sValue = f"{watts};{corrected_kwh:.3f};{validfrom}"
+                    sValue = f"{watts};{corrected_kwh:.3f};{dateline.strftime('%Y-%m-%d %H:%M:%S')}"
                     
-                    Domoticz.Debug(f"Updating device with: capacity={capacity}%, corrected_kwh={corrected_kwh:.3f}kWh, time={validfrom}")
+                    #Domoticz.Debug(f"Updating device with: capacity={capacity}%, corrected_kwh={corrected_kwh:.3f}kWh, time={validfrom}")
+                    Domoticz.Debug(f"Updating device with: capacity={capacity}%, corrected_kwh={corrected_kwh:.3f}kWh, time={dateline.strftime('%Y-%m-%d %H:%M:%S')}")
                     self.UpdateDevice(self.deviceId, 1, 0, sValue)
                     
                     # Track daily total
